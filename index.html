@@ -1,0 +1,743 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="Paste or upload code and see which lines match patterns common in AI-generated code.">
+<style>:root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}[hidden]{display:none!important}</style>
+</head>
+<body>
+<title>Code AI Detector</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap">
+<style>
+/* Layout: toolbar over a two-column workbench: live-highlighting editor on the left, evidence rail on the right; stacks on phones */
+:root{
+  --bg:#f3f5f8; --panel:#ffffff; --ink:#141a22; --muted:#596476; --line:#dce2ea;
+  --accent:#1c6a87; --accent-ink:#ffffff; --code-bg:#fbfcfe; --gutter:#eef2f6;
+  --ai:#d4462d; --ai-bg:rgba(212,70,45,.15);
+  --mix:#b88000; --mix-bg:rgba(232,170,0,.18);
+  --hu:#21815c; --hu-bg:rgba(33,129,92,.12);
+  --shadow:0 1px 2px rgba(20,32,48,.06),0 6px 20px rgba(20,32,48,.05);
+  --f-ui:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-head:"Space Grotesk","IBM Plex Sans",system-ui,sans-serif;
+  --f-code:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0e1217; --panel:#161b22; --ink:#e5e9ef; --muted:#97a1b0; --line:#272e38;
+    --accent:#5cb2d3; --accent-ink:#0b1116; --code-bg:#11161c; --gutter:#141a21;
+    --ai:#ff7b62; --ai-bg:rgba(255,123,98,.17);
+    --mix:#f0c04a; --mix-bg:rgba(240,192,74,.14);
+    --hu:#59c597; --hu-bg:rgba(89,197,151,.12);
+    --shadow:0 1px 2px rgba(0,0,0,.3),0 6px 20px rgba(0,0,0,.25);
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0e1217; --panel:#161b22; --ink:#e5e9ef; --muted:#97a1b0; --line:#272e38;
+  --accent:#5cb2d3; --accent-ink:#0b1116; --code-bg:#11161c; --gutter:#141a21;
+  --ai:#ff7b62; --ai-bg:rgba(255,123,98,.17);
+  --mix:#f0c04a; --mix-bg:rgba(240,192,74,.14);
+  --hu:#59c597; --hu-bg:rgba(89,197,151,.12);
+  --shadow:0 1px 2px rgba(0,0,0,.3),0 6px 20px rgba(0,0,0,.25);
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-ui);font-size:14px;line-height:1.5}
+.wrap{max-width:1340px;margin:0 auto;padding-block:22px 40px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:flex;flex-direction:column;gap:16px}
+header{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:8px 24px}
+h1{font-family:var(--f-head);font-weight:700;font-size:26px;letter-spacing:-.01em;margin:0;text-wrap:balance}
+h1 .tag{font-family:var(--f-code);font-size:12px;font-weight:500;color:var(--muted);border:1px solid var(--line);border-radius:4px;padding:1px 6px;margin-left:8px;vertical-align:4px}
+.sub{margin:2px 0 0;color:var(--muted);max-width:62ch}
+.legend{display:flex;flex-wrap:wrap;gap:12px;font-size:12.5px;color:var(--muted)}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.sw{width:14px;height:14px;border-radius:3px;display:inline-block}
+.sw.ai{background:var(--ai-bg);box-shadow:inset 3px 0 0 var(--ai)}
+.sw.mix{background:var(--mix-bg);box-shadow:inset 3px 0 0 var(--mix)}
+.sw.hu{width:8px;height:8px;border-radius:50%;background:var(--hu)}
+
+.toolbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.toolbar label.f{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:var(--muted)}
+select,.btn{font:500 13px var(--f-ui);color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:7px;padding:7px 10px;cursor:pointer}
+select:focus-visible,.btn:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.btn:hover,select:hover{border-color:var(--muted)}
+.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.spacer{flex:1}
+.status{font-size:12.5px;color:var(--muted);font-variant-numeric:tabular-nums}
+
+.bench{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:16px;align-items:start}
+@media (max-width:920px){.bench{grid-template-columns:minmax(0,1fr)}}
+
+.editor{display:grid;grid-template-columns:auto minmax(0,1fr);height:min(74vh,780px);min-height:380px;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--code-bg);box-shadow:var(--shadow)}
+.gutter{overflow:hidden;background:var(--gutter);border-right:1px solid var(--line);user-select:none;position:relative}
+.g-in{padding-top:12px;will-change:transform}
+.gl{height:20px;font:12px/20px var(--f-code);color:var(--muted);padding:0 12px 0 14px;text-align:right;position:relative;cursor:pointer;min-width:5ch;font-variant-numeric:tabular-nums}
+.gl:hover{color:var(--ink)}
+.gl.ai::before,.gl.mix::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px}
+.gl.ai::before{background:var(--ai)}
+.gl.mix::before{background:var(--mix)}
+.gl.hu::after{content:"";position:absolute;right:4px;top:8px;width:5px;height:5px;border-radius:50%;background:var(--hu)}
+.gl.sel{color:var(--ink);font-weight:600}
+.code{position:relative;min-width:0;overflow:hidden}
+.backdrop{position:absolute;inset:0;pointer-events:none;overflow:hidden}
+.b-in{position:absolute;left:0;right:0;top:12px;will-change:transform}
+.bl{position:absolute;left:0;right:0;height:20px}
+.bl.ai{background:var(--ai-bg)}
+.bl.mix{background:var(--mix-bg)}
+.bl.focus{outline:1.5px solid var(--accent);outline-offset:-1.5px;border-radius:2px}
+textarea#code{position:absolute;inset:0;width:100%;height:100%;resize:none;border:0;outline:none;margin:0;background:transparent;color:var(--ink);font:13px/20px var(--f-code);padding:12px 16px;white-space:pre;overflow:auto;tab-size:4;-moz-tab-size:4;caret-color:var(--accent)}
+textarea#code::placeholder{color:var(--muted)}
+
+.rail{display:flex;flex-direction:column;gap:12px;min-width:0}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 16px;box-shadow:var(--shadow);min-width:0}
+.card h2{font:600 11.5px var(--f-ui);text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:0 0 10px}
+.score-row{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.score-num{font:700 46px/1 var(--f-head);font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.score-num small{font-size:18px;color:var(--muted);font-weight:500}
+.verdict{font:600 15px var(--f-head)}
+.meter{position:relative;height:8px;border-radius:4px;background:linear-gradient(90deg,var(--hu) 0%,var(--mix) 50%,var(--ai) 100%);opacity:.9;margin:14px 0 6px}
+.meter i{position:absolute;top:-4px;width:4px;height:16px;border-radius:2px;background:var(--ink);transform:translateX(-2px);box-shadow:0 0 0 2px var(--panel);transition:left .3s ease}
+.meter-scale{display:flex;justify-content:space-between;font-size:11px;color:var(--muted)}
+.facts{display:grid;grid-template-columns:auto 1fr;gap:3px 12px;margin:12px 0 0;font-size:13px}
+.facts dt{color:var(--muted)}
+.facts dd{margin:0;font-variant-numeric:tabular-nums;text-align:right}
+.note{font-size:12.5px;color:var(--muted);margin:10px 0 0}
+
+.sections{display:flex;flex-direction:column;gap:6px}
+.sec{display:block;width:100%;text-align:left;font:inherit;color:var(--ink);background:transparent;border:1px solid var(--line);border-left-width:4px;border-radius:6px;padding:7px 10px;cursor:pointer}
+.sec:hover{background:var(--gutter)}
+.sec.ai{border-left-color:var(--ai)}
+.sec.mix{border-left-color:var(--mix)}
+.sec .t{display:flex;justify-content:space-between;gap:8px;font-weight:600;font-size:13px;font-variant-numeric:tabular-nums}
+.sec .r{font-size:12px;color:var(--muted)}
+.empty{font-size:13px;color:var(--muted);margin:0}
+
+.pill{display:inline-block;font:600 11.5px var(--f-ui);padding:2px 8px;border-radius:999px;white-space:nowrap}
+.pill.ai{background:var(--ai-bg);color:var(--ai)}
+.pill.mix{background:var(--mix-bg);color:var(--mix)}
+.pill.none{background:var(--gutter);color:var(--muted)}
+.det-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px}
+.det-head b{font:600 15px var(--f-head)}
+.det-src{font:12px/1.5 var(--f-code);background:var(--code-bg);border:1px solid var(--line);border-radius:6px;padding:6px 8px;overflow-x:auto;white-space:pre;margin:0 0 10px}
+.hits{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+.hits li{display:grid;grid-template-columns:auto 1fr;gap:2px 8px;font-size:13px}
+.code-tag{font:600 11px/18px var(--f-code);padding:0 5px;border-radius:4px;align-self:start}
+.code-tag.ai{background:var(--ai-bg);color:var(--ai)}
+.code-tag.hu{background:var(--hu-bg);color:var(--hu)}
+.hits .n{font-weight:600}
+.hits .d{grid-column:2;color:var(--muted);font-size:12.5px}
+.ctx{font-size:12.5px;color:var(--muted);margin:10px 0 0;padding-top:10px;border-top:1px dashed var(--line)}
+
+.rules{display:flex;flex-direction:column;gap:4px;font-size:13px}
+.rules .row{display:grid;grid-template-columns:auto 1fr auto;gap:8px;align-items:center}
+.rules .row .c{font-variant-numeric:tabular-nums;color:var(--muted)}
+.rules h3{font:600 12px var(--f-ui);margin:8px 0 2px;color:var(--muted)}
+.rules h3:first-child{margin-top:0}
+
+.caveat{font-size:12.5px;color:var(--muted);line-height:1.5}
+.caveat b{color:var(--ink)}
+
+.tip{position:fixed;z-index:30;max-width:290px;background:var(--panel);border:1px solid var(--line);border-radius:8px;box-shadow:var(--shadow);padding:8px 10px;font-size:12.5px;pointer-events:none}
+.tip .h{display:flex;gap:8px;align-items:center;margin-bottom:4px;font-weight:600;font-variant-numeric:tabular-nums}
+.tip ul{margin:0;padding-left:16px;color:var(--muted)}
+@media (prefers-reduced-motion:reduce){.meter i{transition:none}}
+</style>
+
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Code AI Detector <span class="tag">heuristic</span></h1>
+      <p class="sub">Paste or upload code. Lines that match patterns common in AI-generated code are highlighted as you type. Click any line to see the evidence.</p>
+    </div>
+    <div class="legend" aria-label="Legend">
+      <span><i class="sw ai"></i>Likely AI</span>
+      <span><i class="sw mix"></i>Possible AI</span>
+      <span><i class="sw hu"></i>Human marker</span>
+    </div>
+  </header>
+
+  <div class="toolbar">
+    <label class="f" for="lang">Language
+      <select id="lang">
+        <option value="auto">Auto-detect</option>
+        <option value="py">Python / R / shell</option>
+        <option value="m">MATLAB / Octave</option>
+        <option value="c">JS / TS / C / C++ / Java</option>
+      </select>
+    </label>
+    <label class="f" for="sample">Example
+      <select id="sample">
+        <option value="m">MATLAB, mixed authorship</option>
+        <option value="py">Python, AI-style</option>
+        <option value="js">JavaScript, human-style</option>
+        <option value="">(none)</option>
+      </select>
+    </label>
+    <label class="btn" for="file">Upload file</label>
+    <input id="file" type="file" hidden accept=".py,.m,.js,.ts,.jsx,.tsx,.c,.h,.cpp,.hpp,.cc,.java,.cs,.go,.rs,.swift,.kt,.r,.R,.sh,.txt">
+    <button class="btn" id="clear" type="button">Clear</button>
+    <span class="spacer"></span>
+    <span class="status" id="status"></span>
+  </div>
+
+  <div class="bench">
+    <div class="editor">
+      <div class="gutter" id="gutter"><div class="g-in" id="gin"></div></div>
+      <div class="code">
+        <div class="backdrop"><div class="b-in" id="bin"></div></div>
+        <textarea id="code" spellcheck="false" autocomplete="off" autocapitalize="off" wrap="off" aria-label="Code to analyze" placeholder="Paste code here…"></textarea>
+      </div>
+    </div>
+
+    <aside class="rail">
+      <section class="card" aria-live="polite">
+        <h2>Overall</h2>
+        <div class="score-row"><span class="score-num" id="score">0<small>/100</small></span><span class="verdict" id="verdict"></span></div>
+        <div class="meter"><i id="marker" style="left:0%"></i></div>
+        <div class="meter-scale"><span>Human patterns</span><span>AI patterns</span></div>
+        <dl class="facts">
+          <dt>Lines flagged</dt><dd id="f-flag">–</dd>
+          <dt>AI signals</dt><dd id="f-ai">–</dd>
+          <dt>Human markers</dt><dd id="f-hu">–</dd>
+          <dt>Language</dt><dd id="f-lang">–</dd>
+        </dl>
+        <p class="note" id="mixnote" hidden></p>
+      </section>
+
+      <section class="card">
+        <h2>Flagged sections</h2>
+        <div class="sections" id="sections"></div>
+      </section>
+
+      <section class="card">
+        <h2>Line evidence</h2>
+        <div id="details"><p class="empty">Click a line or a flagged section.</p></div>
+      </section>
+
+      <section class="card">
+        <h2>Signals found</h2>
+        <div class="rules" id="rules"></div>
+      </section>
+
+      <p class="caveat"><b>Treat this as a lead, not a verdict.</b> It matches style patterns; it cannot know who wrote the code. Careful humans write tidy, well-commented code, and AI output can be edited to look casual. Never use the score alone to accuse someone.</p>
+    </aside>
+  </div>
+</div>
+
+<div class="tip" id="tip" hidden></div>
+
+<script type="text/plain" id="sample-m">% proj 2 - beam deflection
+% eas230, still need to fix units
+clear; clc;
+
+L=2.5; E = 200e9;
+I=8.3e-6;
+w = 1200 ;  % N/m  (check this w/ prof)
+
+x = linspace(0,L,100);
+y=zeros(size(x));
+%y = w*x.^2/(24*E*I);   old formula, wrong
+for k=1:length(x)
+    y(k) = -w*x(k)^2*(6*L^2 - 4*L*x(k) + x(k)^2)/(24*E*I);
+end
+disp('here')
+plot(x,y*1000)  % mm
+xlabel('x (m)'); ylabel('deflection (mm)')
+summarize_beam_results(y, L)
+
+%% ===== Results Summary =====
+% This function calculates the maximum deflection and displays the results
+function summarize_beam_results(deflection_values, beam_length)
+    % Input validation
+    if ~isnumeric(deflection_values) || isempty(deflection_values)
+        error('Input deflection_values must be a non-empty numeric array.');
+    end
+
+    % Step 1: Find the maximum absolute deflection
+    [max_deflection, max_index] = max(abs(deflection_values));
+
+    % Step 2: Calculate the corresponding position along the beam
+    position_of_max = (max_index - 1) / (numel(deflection_values) - 1) * beam_length;
+
+    % Display the results in a clean, formatted manner
+    fprintf('\n=== Beam Analysis Results ===\n');
+    fprintf('Maximum deflection: %.4f mm\n', max_deflection * 1000);
+    fprintf('Location of maximum deflection: %.2f m\n', position_of_max);
+    fprintf('Analysis completed successfully! ✅\n');
+end
+</script>
+<script type="text/plain" id="sample-py">import logging
+from typing import List, Optional
+
+
+def calculate_average_score(student_scores: List[float]) -> Optional[float]:
+    """
+    Calculate the average score from a list of student scores.
+
+    Args:
+        student_scores (List[float]): A list of numerical scores.
+
+    Returns:
+        Optional[float]: The average score, or None if the list is empty.
+
+    Raises:
+        TypeError: If any score is not a number.
+    """
+    # Handle the edge case of an empty list
+    if not student_scores:
+        return None
+
+    # Validate that all scores are numeric
+    for score in student_scores:
+        if not isinstance(score, (int, float)):
+            raise TypeError(f"Invalid score: {score}. All scores must be numeric.")
+
+    # Calculate and return the average
+    total_score = sum(student_scores)
+    return total_score / len(student_scores)
+
+
+def main() -> None:
+    """Main function to demonstrate the score calculator."""
+    # Sample data for demonstration purposes
+    sample_scores = [88.5, 92.0, 79.5, 95.0]
+
+    try:
+        average_score = calculate_average_score(sample_scores)
+        print(f"✅ Average score: {average_score:.2f}")
+    except Exception as e:
+        logging.error(f"An error occurred: {e}")
+
+
+# Example usage
+if __name__ == "__main__":
+    main()
+</script>
+<script type="text/plain" id="sample-js">// quick script to dedupe the export csv. run w/ node dedupe.js file.csv
+const fs = require('fs')
+
+const f = process.argv[2]
+if(!f) { console.log('need a file'); process.exit(1) }
+
+let rows = fs.readFileSync(f,'utf8').split('\n')
+const seen = {}
+let out = []
+for (let i=0;i<rows.length;i++) {
+  const r = rows[i].trim()
+  if(!r) continue
+  // email is col 3, sometimes uppercase?? normalize
+  const key = (r.split(',')[2]||'').toLowerCase()
+  if(seen[key]) continue
+  seen[key]=1
+  out.push(r)
+}
+//console.log(out.length, rows.length)
+fs.writeFileSync(f.replace('.csv','_dedup.csv'), out.join('\n'))
+console.log('done', out.length)
+</script>
+
+<script id="engine">
+/* ---------- Detection engine: pure functions, no DOM ---------- */
+const RULES = {
+  AI101:{name:'Narrating comment', d:'A full-sentence comment that restates what the code beside it plainly does. Assistants comment nearly every step this way.'},
+  AI102:{name:'Numbered step comment', d:'“Step 1 / Step 2” comments that walk through code like a tutorial.'},
+  AI103:{name:'Assistant phrasing', d:'Wording typical of generated code, such as “edge case”, “for demonstration purposes”, “example usage”, “ensure that” or “robust”.'},
+  AI104:{name:'Section banner', d:'A decorative divider comment (=====, -----) framing a section title.'},
+  AI105:{name:'Structured docstring', d:'Args / Returns / Raises (or @param / @returns) sections, often added even to small functions.'},
+  AI106:{name:'Emoji in code', d:'Emoji in output strings or comments, such as ✅ or 🚀.'},
+  AI201:{name:'Catch-all error handler', d:'A generic catch (except Exception as e, catch ME) or a formatted “An error occurred” message.'},
+  AI202:{name:'Defensive validation', d:'Type and value checks with polished error messages at the top of a function.'},
+  AI203:{name:'Full type annotations', d:'Every parameter and the return value carry type annotations.'},
+  AI204:{name:'Long descriptive names', d:'Identifiers of three or more words, like calculate_average_score.'},
+  AI205:{name:'Demo scaffold', d:'A main guard added to show how to run the code.'},
+  AI301:{name:'Polished output', d:'Output with banners (===), “successfully”, or neatly labeled summaries.'},
+  AI401:{name:'Step-by-step commenting', d:'Most statements in this block have their own capitalized explanatory comment.'},
+  HU101:{name:'Casual note or TODO', d:'TODO/FIXME, “??”, slang or notes to self. People write these; assistants rarely do.'},
+  HU102:{name:'Terse lowercase comment', d:'A short lowercase comment with no punctuation.'},
+  HU103:{name:'Commented-out code', d:'Old code left in a comment while experimenting.'},
+  HU104:{name:'Debug print', d:'A leftover print such as disp(\'here\') or console.log(x).'},
+  HU105:{name:'Throwaway name', d:'Names like tmp, foo, x1 or test2.'},
+  HU106:{name:'Inconsistent spacing', d:'Spacing that differs from the rest of the file, such as x=1 next to y = 2, or a space before a semicolon.'},
+  HU107:{name:'Trailing whitespace', d:'Spaces left at the end of the line.'}
+};
+
+const NARR = /^(initiali[sz]e|create|define|calculate|compute|check (if|whether|that|for)|loop (through|over)|iterate (through|over)|return|get|set|update|store|convert|handle|validate|ensure|print|display|show|append|add|import|load|read|write|parse|extract|call|use|sort|filter|plot|find|generate|open|close|save|apply|perform|process|prepare|split|remove|increment|determine|retrieve|fetch|format|output|assign|declare|instantiate|configure|reset|clean|normali[sz]e|map|build|construct|run|send|log|count|sum|multiply|divide|subtract|combine|merge|concatenate|compare|swap|verify|label|set up|preallocate|allocate|this (function|method|class|script|block|loop))\b/i;
+
+const PHRASES = [
+  /example usage|usage example/, /\bedge cases?\b/, /\bfor (demonstration|simplicity|illustration)( purposes)?\b/, /\bdemonstrat(e|es|ing|ion)\b/,
+  /\bin a real[- ]?(world)? ?(application|scenario|project|implementation|setting)/,
+  /\byou (can|may|might|should) (want to |need to )?(modify|adjust|replace|change|customi[sz]e|add|extend|use)\b/,
+  /replace (this |these |it )?with (your|actual|real)/, /your[_ -]\w*[_ -]here|<your[_ -]/, /\bmake sure (to|that)\b/,
+  /\bthis (function|method|class|script|module|code) (will |is used to |takes|returns|calculates|computes|handles|implements|provides|performs|defines|creates|displays)/,
+  /\bhelper (function|method)\b/, /\bmain (function|logic|entry point)\b/, /\b(note|optional|important):/, /\bbest practices?\b/,
+  /\b(robust|comprehensive|gracefully|seamless(ly)?|leverag(e|es|ing)|streamline)/, /\bensures? (that|the)\b/,
+  /\b(sample|dummy|mock) data\b/, /\bplaceholder\b/, /\b(as|if) needed\b/, /handle (any )?(potential|possible) (errors?|exceptions?|issues?)/,
+  /\berror handling\b/, /\binput validation\b/, /\bfor (better|improved) (readability|performance|clarity)/, /\bfor clarity\b/,
+  /\bclean,? (and )?(formatted|readable)\b|\bformatted (manner|way)\b|\bclean output\b/, /\buser[- ]friendly\b/
+];
+const HUMAN_CASUAL = /\b(todo|fixme|hack|xxx|idk|lol|wtf|ugh|dunno|not sure|no idea|hacky|kludge|temp fix|works now|why (does|is|did)|for some reason|dont|doesnt|cant|wont|didnt|gonna|wanna|kinda|pls|plz|oops|w\/|prof|still need)\b|\?\?|!!/i;
+const EMOJI = /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{2B50}\u{2B06}\u{2B07}]/u;
+const LONG_ID = /(?<!\.)\b[a-z][a-z0-9]*(?:_[a-z0-9]+){2,}\b|(?<!\.)\b[a-z][a-z0-9]*(?:[A-Z][a-z0-9]+){2,}\b/g;
+
+function detectLang(t){
+  const s={py:0,m:0,c:0};
+  if(/^\s*(def |class \w+.*:|import \w|from \S+ import)/m.test(t)) s.py+=3;
+  if(/^\s*#(?!include|define|pragma|!)/m.test(t)) s.py+=1;
+  if(/^\s*(if|for|while|elif|else|try|except).*:\s*$/m.test(t)) s.py+=2;
+  if(/^\s*%/m.test(t)) s.m+=3;
+  if(/\b(fprintf|disp|zeros|linspace|numel|xlabel|clc)\s*\(?/.test(t)) s.m+=2;
+  if(/^\s*end\s*;?\s*$/m.test(t)) s.m+=2;
+  if(/\/\/|\/\*/.test(t)) s.c+=2;
+  if(/[{};]\s*$/m.test(t)) s.c+=2;
+  if(/\b(const|let|var|=>|#include|public |std::|console\.|function\s*\w*\s*\([^)]*\)\s*\{)/.test(t)) s.c+=3;
+  return Object.entries(s).sort((a,b)=>b[1]-a[1])[0][1]===0 ? 'py' : Object.entries(s).sort((a,b)=>b[1]-a[1])[0][0];
+}
+
+function cleanC(s){ return s.replace(/^[\s*\/#%]+/,'').replace(/\*\/\s*$/,'').trim(); }
+
+function parse(text, lang){
+  const out=[]; let inBlk=null, inDoc=false;
+  for(const raw of text.replace(/\r\n?/g,'\n').split('\n')){
+    const o={raw, indent:(raw.match(/^[ \t]*/)||[''])[0], code:'', comment:'', rawComment:'', doc:false, blank:raw.trim()===''};
+    if(o.blank){ o.doc=!!inBlk; out.push(o); continue; }
+    let i=0, codeBuf='', parts=[];
+    if(inBlk){
+      const end = inBlk==='c'?'*/' : inBlk==='m'?'%}' : inBlk;
+      const idx = raw.indexOf(end);
+      if(idx<0){ if(inDoc){o.comment=cleanC(raw); o.doc=true;} else o.code=raw.trim(); out.push(o); continue; }
+      if(inDoc){ o.comment=cleanC(raw.slice(0,idx)); o.doc=true; } else codeBuf=raw.slice(0,idx+end.length);
+      inBlk=null; i=idx+end.length;
+    }
+    let q=null;
+    for(; i<raw.length; i++){
+      const ch=raw[i];
+      if(q){ codeBuf+=ch; if(ch==='\\' && lang!=='m'){ codeBuf+=raw[i+1]||''; i++; continue; } if(ch===q) q=null; continue; }
+      if(lang==='py' && (raw.startsWith('"""',i)||raw.startsWith("'''",i))){
+        const tok=raw.substr(i,3), end=raw.indexOf(tok,i+3);
+        const isDoc = /^[rRbBuUfF]?$/.test(codeBuf.trim());
+        if(end<0){ if(isDoc){ o.comment=raw.slice(i+3).trim(); o.doc=true; } else codeBuf+=raw.slice(i); inBlk=tok; inDoc=isDoc; break; }
+        if(isDoc){ o.comment=raw.slice(i+3,end).trim(); o.doc=true; } else codeBuf+=raw.slice(i,end+3);
+        i=end+2; continue;
+      }
+      if(ch==='"' || ch==="'" || (ch==='`' && lang==='c')){
+        if(lang==='m' && ch==="'" && /[\w)\]}.']/.test(codeBuf.slice(-1))){ codeBuf+=ch; continue; } // transpose
+        q=ch; codeBuf+=ch; continue;
+      }
+      if(lang==='py' && ch==='#'){ parts.push(raw.slice(i+1)); break; }
+      if(lang==='m'){
+        if(ch==='%'){ if(raw.trim()==='%{'){ inBlk='m'; inDoc=true; o.doc=true; } else parts.push(raw.slice(i+1)); break; }
+        if(raw.startsWith('...',i)){ parts.push(raw.slice(i+3)); break; }
+      }
+      if(lang==='c'){
+        if(raw.startsWith('//',i)){ parts.push(raw.slice(i+2)); break; }
+        if(raw.startsWith('/*',i)){
+          const end=raw.indexOf('*/',i+2);
+          if(end<0){ parts.push(raw.slice(i+2)); inBlk='c'; inDoc=true; o.doc=true; break; }
+          parts.push(raw.slice(i+2,end)); i=end+1; continue;
+        }
+      }
+      codeBuf+=ch;
+    }
+    o.code=(o.code||codeBuf).trim();
+    o.rawComment=parts.join(' ');
+    const cm=parts.map(cleanC).join(' ').trim();
+    if(cm) o.comment=(o.comment?o.comment+' ':'')+cm;
+    out.push(o);
+  }
+  return out;
+}
+
+const STR_RE = /(["'`])((?:\\.|(?!\1).)*)\1/g;
+function strings(k){ const r=[]; let m; STR_RE.lastIndex=0; while((m=STR_RE.exec(k))) r.push(m[2]); return r; }
+function stripStrings(k){ return k.replace(STR_RE,'""'); }
+function looksLikeCode(c){
+  return /^[A-Za-z_][\w.\[\]()]*\s*(=|\+=|-=|\*=)\s*\S/.test(c) || /^[a-z_][\w.]*\(.*\)\s*;?$/.test(c) || /;\s*$/.test(c)
+    || (/^(print|disp|fprintf|console\.log|return|import|plot|if|for|while)\b/.test(c) && /[()=;'"]/.test(c));
+}
+
+function lineHits(o, ctx){
+  const H=[]; const add=(id,w)=>H.push({id,w});
+  const c=o.comment, k=o.code, kNS=stripStrings(k), strs=strings(k);
+  const phraseText=(c+' '+strs.join(' ')).toLowerCase();
+  if(c){
+    const words=c.split(/\s+/).filter(Boolean).length;
+    const cap=/^[A-Z]/.test(c);
+    if(/^(step\s*\d+|\d+[.)]\s+[A-Z])/i.test(c)) add('AI102',.45);
+    else if(cap && NARR.test(c) && words>=2 && words<=18 && !looksLikeCode(c)) add('AI101', o.doc?.2:.35);
+    if(/^(args|arguments|parameters|params|returns?|raises|yields|inputs?|outputs?|attributes|examples?)\s*:?\s*$|^(args|arguments|parameters|returns|raises|inputs|outputs)\s*:/i.test(c) || /@(param|returns?|throws|example)\b/.test(c) || (o.doc && /^-{4,}$/.test(c))) add('AI105',.4);
+    if(/[=\-#*~_]{4,}|%{3,}/.test(o.rawComment)) add('AI104',.3);
+    if(HUMAN_CASUAL.test(c)) add('HU101',-.45);
+    else if(!o.doc && looksLikeCode(c)) add('HU103',-.4);
+    else if(!o.doc && /^[a-z]/.test(c) && words<=6 && !/[.!:]$/.test(c)) add('HU102',-.2);
+  }
+  let ph=0; for(const r of PHRASES) if(r.test(phraseText)) ph++;
+  if(ph) add('AI103', Math.min(.7, .4+.15*(ph-1)));
+  if(EMOJI.test(o.raw)) add('AI106',.55);
+  if(k){
+    let e=0;
+    if(/\bexcept\s+(Exception|BaseException)\b/.test(k)) e=.4;
+    if(ctx.lang==='m' && /^catch\s+\w+/.test(k)) e=Math.max(e,.3);
+    if(/\bcatch\s*\(\s*(e|err|error)\s*\)/.test(k)) e=Math.max(e,.2);
+    if(/\b(an? )?(unexpected )?(error|exception) (has )?occurred\b/i.test(strs.join(' '))) e=Math.max(e,.4);
+    if(e) add('AI201',e);
+    let v=0;
+    if(/\braise\s+(ValueError|TypeError|KeyError|RuntimeError)\s*\(\s*f?["']/.test(k)) v=.3;
+    if(/\bisinstance\s*\(/.test(k) || /\bthrow\s+new\s+\w*Error\s*\(/.test(k) || /\btypeof\s+\w+\s*!==?\s*['"]/.test(k)) v=Math.max(v,.25);
+    if(/\b(validateattributes|validatestring|mustBe\w+)\b/.test(k)) v=Math.max(v,.3);
+    if(ctx.lang==='m' && /\berror\s*\(\s*['"].*\b(must|should|invalid|expected)\b/i.test(k)) v=Math.max(v,.35);
+    if(v) add('AI202',v);
+    if(ctx.lang==='py' && /^(async\s+)?def\s+\w+\s*\(.*\)\s*->\s*.+:$/.test(k)) add('AI203',.25);
+    else if(ctx.lang==='c' && /\)\s*:\s*[\w<>\[\]|]+\s*(\{|=>)/.test(k)) add('AI203',.15);
+    const ids=new Set(kNS.match(LONG_ID)||[]);
+    if(ids.size) add('AI204', Math.min(.3,.1*ids.size));
+    if(/if\s+__name__\s*==\s*['"]__main__['"]/.test(k)) add('AI205',.2);
+    if(/\b(print|console\.(log|info)|fprintf|printf|disp|System\.out\.print\w*|puts|echo|logging\.\w+)\b/.test(k)){
+      const s=strs.join(' ');
+      if(/(successfully|completed|finished!|={3,}|-{3,}|\*{3,})/i.test(s)) add('AI301',.35);
+      else if(strs.some(x=>/^[A-Z][A-Za-z ]{3,}:\s*(\{|%)/.test(x))) add('AI301',.12);
+    }
+    if(/\b(print|console\.log|disp|printf|fprintf)\s*\(\s*(['"`])\s*(here\d*|test|testing|debug|asdf|hi|hello|ok|okay|done|got here|working|yo|a+|\d+)\s*\2\s*(,[^)]*)?\)/i.test(k)
+       || /\b(print|console\.log|disp)\s*\(\s*[a-z_][\w.]{0,6}\s*\)\s*;?$/.test(k)) add('HU104',-.4);
+    if(/\b(tmp\d*|temp\d*|foo|bar|baz|asdf\w*|stuff|thing\d*|blah|test\d+|var\d+|myvar\w*|aa|bb|xx|zz|dummy\d)\b/.test(kNS)) add('HU105',-.25);
+    let sp=0;
+    if(ctx.mixedAssign){
+      const tight=/^[\w.\[\]]+=(?!=)/.test(k), spaced=/^[\w.\[\]]+ = /.test(k);
+      if((tight && ctx.assign==='spaced') || (spaced && ctx.assign==='tight')) sp-=.2;
+    }
+    if(/\S\s+;\s*$/.test(k) && ctx.lang!=='py') sp-=.15;
+    if(ctx.lang==='c' && (/\b(if|for|while|switch)\(/.test(k) || /;\S/.test(kNS.replace(/;\s*$/,'')))) sp-=.15;
+    if(ctx.commaMajority==='spaced' && /,(?=[^\s\]})])/.test(kNS)) sp-=.12;
+    if(sp) add('HU106',Math.max(-.3,sp));
+  }
+  if(/\S[ \t]+$/.test(o.raw)) add('HU107',-.1);
+  return H;
+}
+
+function analyze(text, langSel){
+  const lang = langSel==='auto' ? detectLang(text) : langSel;
+  const L = parse(text, lang);
+  let spaced=0,tight=0,cSp=0,cTi=0,tabs=0,spcs=0;
+  for(const l of L){
+    if(l.blank) continue;
+    if(/^[\w.\[\]]+ = (?!=)/.test(l.code)) spaced++; else if(/^[\w.\[\]]+=(?!=)/.test(l.code)) tight++;
+    const s=stripStrings(l.code);
+    cSp+=(s.match(/, /g)||[]).length; cTi+=(s.match(/,(?=[^\s\]})])/g)||[]).length;
+    if(/^\t/.test(l.indent)) tabs++; else if(/^ /.test(l.indent)) spcs++;
+  }
+  const ctx={lang, assign: spaced>=tight?'spaced':'tight', mixedAssign: Math.min(spaced,tight)>=1,
+             commaMajority: cSp>cTi*2 ? 'spaced' : 'none'};
+  const fileBias = (tabs && spcs) ? -.1 : 0;
+
+  // blocks: a new top-level unit starts at an unindented line after a blank line
+  const blocks=[]; let cur=null, prevBlank=true;
+  L.forEach((l,i)=>{
+    l.hits = l.blank ? [] : lineHits(l, ctx);
+    l.raw_ = l.hits.reduce((a,h)=>a+h.w,0);
+    if(l.blank){ prevBlank=true; l.block=cur?blocks.length-1:-1; return; }
+    const closer=/^(\}|\)|\]|end\b|else|elif|except|finally|catch)/.test(l.raw.trim());
+    if(!cur || (l.indent.length===0 && !closer && prevBlank)){ cur={start:i,end:i,lines:[],hits:[]}; blocks.push(cur); }
+    cur.lines.push(i); cur.end=i; l.block=blocks.length-1; prevBlank=false;
+  });
+  for(const b of blocks){
+    const n=b.lines.length;
+    const sum=b.lines.reduce((a,i)=>a+L[i].raw_,0);
+    const cl=b.lines.filter(i=>L[i].comment && !L[i].code && !L[i].doc);
+    const sent=cl.filter(i=>/^[A-Z][a-z]+(\s+\S+)+/.test(L[i].comment) && !HUMAN_CASUAL.test(L[i].comment));
+    let bonus=0;
+    if(cl.length>=3 && cl.length/n>=.2 && sent.length/cl.length>=.6){ bonus+=.3; b.hits.push({id:'AI401',w:.3}); }
+    b.raw=Math.max(-1,Math.min(1.5, sum/Math.sqrt(n)+bonus));
+  }
+  const sig=x=>1/(1+Math.exp(-4.5*(x-.28)));
+  let sumP=0, nb=0, flagged=0, aiHits=0, huHits=0; const counts={};
+  L.forEach(l=>{
+    if(l.blank){ l.p=0; l.level=''; return; }
+    const br = l.block>=0 ? blocks[l.block].raw : 0;
+    l.p = sig(.4*l.raw_ + .6*br + fileBias);
+    l.level = l.p>=.68 ? 'ai' : l.p>=.45 ? 'mix' : '';
+    l.human = l.hits.some(h=>h.w<0);
+    sumP+=l.p; nb++; if(l.level) flagged++;
+    for(const h of l.hits){ counts[h.id]=(counts[h.id]||0)+1; if(h.w>0) aiHits++; else huHits++; }
+  });
+  for(const b of blocks) for(const h of b.hits){ counts[h.id]=(counts[h.id]||0)+1; aiHits++; }
+
+  // flagged sections: runs of flagged lines (blank lines inside a run are bridged)
+  const sections=[]; let s=null;
+  L.forEach((l,i)=>{
+    if(l.blank) return;
+    if(l.level){
+      if(s && L.slice(s.end+1,i).every(x=>x.blank)){ s.end=i; s.lines.push(i); }
+      else { s={start:i,end:i,lines:[i]}; sections.push(s); }
+    } else s=null;
+  });
+  for(const sec of sections){
+    const ps=sec.lines.map(i=>L[i].p);
+    sec.p=ps.reduce((a,b)=>a+b,0)/ps.length;
+    sec.level=sec.p>=.68?'ai':'mix';
+    const rc={};
+    sec.lines.forEach(i=>L[i].hits.filter(h=>h.w>0).forEach(h=>rc[h.id]=(rc[h.id]||0)+1));
+    new Set(sec.lines.map(i=>L[i].block)).forEach(bi=>blocks[bi]&&blocks[bi].hits.forEach(h=>rc[h.id]=(rc[h.id]||0)+1));
+    sec.top=Object.entries(rc).sort((a,b)=>b[1]-a[1]).slice(0,3).map(e=>e[0]);
+  }
+  const meanP = nb? sumP/nb : 0;
+  const score = Math.round(Math.max(0,Math.min(1,(meanP-.22)/.6))*100);
+  return {lang, lines:L, blocks, sections, counts, score, nb, flagged, aiHits, huHits};
+}
+if(typeof module!=='undefined') module.exports={analyze,RULES};
+</script>
+
+<script>
+(function(){
+  if(typeof document==='undefined') return;
+  const LH=20, PAD=12;
+  const $=id=>document.getElementById(id);
+  const ta=$('code'), gin=$('gin'), bin=$('bin'), tip=$('tip');
+  const LANGNAME={py:'Python-style',m:'MATLAB',c:'C-style (JS/C/Java)'};
+  let R=null, sel=-1, focusRange=null;
+
+  const esc=s=>s.replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  const levelName=l=>l==='ai'?'Likely AI':l==='mix'?'Possible AI':'No flag';
+
+  function loadSample(key){
+    const el=key && $('sample-'+key);
+    ta.value = el ? el.textContent.replace(/^\n/,'') : '';
+    ta.scrollTop=0; sel=-1; focusRange=null; run(true);
+  }
+
+  function run(pickFirst){
+    R=analyze(ta.value, $('lang').value);
+    if(sel>=R.lines.length) sel=-1;
+    if(pickFirst){ const s=R.sections[0]; sel = s ? s.start : -1; focusRange = s ? [s.start,s.end] : null; }
+    renderEditor(); renderSummary(); renderDetails();
+  }
+
+  function renderEditor(){
+    let g='', b='';
+    R.lines.forEach((l,i)=>{
+      g+=`<div class="gl ${l.level}${l.human?' hu':''}${i===sel?' sel':''}" data-i="${i}">${i+1}</div>`;
+      if(l.level) b+=`<div class="bl ${l.level}" style="top:${i*LH}px"></div>`;
+    });
+    if(focusRange) b+=`<div class="bl focus" style="top:${focusRange[0]*LH}px;height:${(focusRange[1]-focusRange[0]+1)*LH}px"></div>`;
+    else if(sel>=0) b+=`<div class="bl focus" style="top:${sel*LH}px"></div>`;
+    gin.innerHTML=g; bin.innerHTML=b; sync();
+  }
+  function sync(){ const y=ta.scrollTop; gin.style.transform=`translateY(${-y}px)`; bin.style.transform=`translateY(${-y}px)`; }
+
+  function renderSummary(){
+    const tooShort=R.nb<4;
+    $('score').innerHTML = (tooShort?'–':R.score)+'<small>/100</small>';
+    $('verdict').textContent = tooShort ? 'Not enough code' : R.score>=60 ? 'Strong AI patterns' : R.score>=30 ? 'Some AI patterns' : 'Mostly human patterns';
+    $('verdict').style.color = tooShort ? 'var(--muted)' : R.score>=60 ? 'var(--ai)' : R.score>=30 ? 'var(--mix)' : 'var(--hu)';
+    $('marker').style.left = (tooShort?0:R.score)+'%';
+    $('f-flag').textContent = `${R.flagged} of ${R.nb}`;
+    $('f-ai').textContent = R.aiHits; $('f-hu').textContent = R.huHits;
+    $('f-lang').textContent = LANGNAME[R.lang] + ($('lang').value==='auto'?' (auto)':'');
+    $('status').textContent = R.nb ? `${R.sections.length} flagged section${R.sections.length===1?'':'s'}` : '';
+    const mix=$('mixnote');
+    const hasAI=R.sections.some(s=>s.level==='ai');
+    if(hasAI && R.huHits>=3){ mix.hidden=false; mix.textContent='Mixed authorship is likely: casual, hand-written code sits next to sections with strong AI patterns.'; }
+    else mix.hidden=true;
+
+    const secs=$('sections');
+    secs.innerHTML = R.sections.length ? R.sections.map((s,k)=>`<button class="sec ${s.level}" type="button" data-k="${k}">
+        <span class="t"><span>Lines ${s.start+1}${s.end>s.start?'–'+(s.end+1):''}</span><span>${levelName(s.level)} · ${Math.round(s.p*100)}%</span></span>
+        <span class="r">${s.top.map(id=>RULES[id].name).join(' · ')||'Carried by surrounding block'}</span></button>`).join('')
+      : `<p class="empty">${R.nb?'No lines cross the flag threshold.':'Paste code to start.'}</p>`;
+
+    const ids=Object.keys(R.counts).sort();
+    const row=id=>`<div class="row"><span class="code-tag ${id.startsWith('AI')?'ai':'hu'}">${id}</span><span>${RULES[id].name}</span><span class="c">×${R.counts[id]}</span></div>`;
+    const ai=ids.filter(i=>i.startsWith('AI')), hu=ids.filter(i=>i.startsWith('HU'));
+    $('rules').innerHTML = (ai.length?'<h3>Point toward AI</h3>'+ai.map(row).join(''):'')+(hu.length?'<h3>Point toward a human</h3>'+hu.map(row).join(''):'') || '<p class="empty">No signals yet.</p>';
+  }
+
+  function hitItem(h){
+    const r=RULES[h.id];
+    return `<li><span class="code-tag ${h.w>0?'ai':'hu'}">${h.id}</span><span class="n">${r.name}</span><span class="d">${r.d}</span></li>`;
+  }
+  function renderDetails(){
+    const d=$('details');
+    if(sel<0 || !R.lines[sel]){ d.innerHTML='<p class="empty">Click a line or a flagged section.</p>'; return; }
+    const l=R.lines[sel];
+    const lvl=l.level||'none';
+    let h=`<div class="det-head"><b>Line ${sel+1}</b><span class="pill ${lvl}">${levelName(l.level)}${l.blank?'':' · '+Math.round(l.p*100)+'%'}</span></div>`;
+    h+=`<pre class="det-src">${esc(l.raw)||' '}</pre>`;
+    if(l.blank){ d.innerHTML=h+'<p class="empty">Blank line.</p>'; return; }
+    h+= l.hits.length ? `<ul class="hits">${l.hits.slice().sort((a,b)=>b.w-a.w).map(hitItem).join('')}</ul>` : '<p class="empty">No direct signals on this line.</p>';
+    const b=R.blocks[l.block];
+    if(b){
+      const rc={};
+      b.lines.forEach(i=>R.lines[i].hits.forEach(x=>{ if(x.w>0) rc[x.id]=(rc[x.id]||0)+1; }));
+      b.hits.forEach(x=>rc[x.id]=(rc[x.id]||0)+1);
+      const top=Object.entries(rc).sort((a,c)=>c[1]-a[1]).slice(0,4);
+      const where=`lines ${b.start+1}–${b.end+1}`;
+      h+=`<p class="ctx">${top.length?`Its surrounding block (${where}) adds weight: ${top.map(([id,n])=>`${RULES[id].name.toLowerCase()}${n>1?' ×'+n:''}`).join(', ')}.`:`Its surrounding block (${where}) has no AI signals.`}</p>`;
+    }
+    d.innerHTML=h;
+  }
+
+  function lineStart(i){ let off=0; const ls=ta.value.split('\n'); for(let k=0;k<i;k++) off+=ls[k].length+1; return off; }
+  function selectLine(i, range){
+    sel=i; focusRange=range||null; renderEditor(); renderDetails();
+  }
+  function jump(s){
+    ta.scrollTop=Math.max(0,s.start*LH-60); sync();
+    selectLine(s.start,[s.start,s.end]);
+  }
+  function caretLine(){ return ta.value.slice(0,ta.selectionStart).split('\n').length-1; }
+
+  let t; ta.addEventListener('input',()=>{ clearTimeout(t); t=setTimeout(()=>{ focusRange=null; run(false); },200); });
+  ta.addEventListener('scroll',sync);
+  ['click','keyup'].forEach(ev=>ta.addEventListener(ev,e=>{
+    if(e.type==='keyup' && !/Arrow|Page|Home|End/.test(e.key)) return;
+    const i=caretLine(); if(i!==sel || focusRange) selectLine(i);
+  }));
+  $('gutter').addEventListener('click',e=>{
+    const el=e.target.closest('.gl'); if(!el) return;
+    const i=+el.dataset.i; const off=lineStart(i);
+    ta.setSelectionRange(off, off+R.lines[i].raw.length);
+    selectLine(i);
+  });
+  $('sections').addEventListener('click',e=>{ const b=e.target.closest('.sec'); if(b) jump(R.sections[+b.dataset.k]); });
+
+  ta.addEventListener('mousemove',e=>{
+    if(!R) return;
+    const rect=ta.getBoundingClientRect();
+    const i=Math.floor((e.clientY-rect.top-PAD+ta.scrollTop)/LH);
+    const l=R.lines[i];
+    if(!l || l.blank || (!l.level && !l.human)){ tip.hidden=true; return; }
+    const hs=l.hits.slice().sort((a,b)=>Math.abs(b.w)-Math.abs(a.w)).slice(0,3);
+    tip.innerHTML=`<div class="h"><span class="pill ${l.level||'none'}">${levelName(l.level)} · ${Math.round(l.p*100)}%</span>Line ${i+1}</div>`+
+      (hs.length?`<ul>${hs.map(h=>`<li>${RULES[h.id].name}</li>`).join('')}</ul>`:'<ul><li>Carried by its surrounding block</li></ul>');
+    tip.hidden=false;
+    const w=tip.offsetWidth, hgt=tip.offsetHeight;
+    let x=e.clientX+14, y=e.clientY+16;
+    if(x+w>innerWidth-8) x=e.clientX-w-14;
+    if(y+hgt>innerHeight-8) y=e.clientY-hgt-12;
+    tip.style.left=Math.max(8,x)+'px'; tip.style.top=Math.max(8,y)+'px';
+  });
+  ta.addEventListener('mouseleave',()=>tip.hidden=true);
+  ta.addEventListener('scroll',()=>tip.hidden=true);
+
+  $('lang').addEventListener('change',()=>run(false));
+  $('sample').addEventListener('change',e=>loadSample(e.target.value));
+  $('clear').addEventListener('click',()=>{ $('sample').value=''; loadSample(''); ta.focus(); });
+  $('file').addEventListener('change',e=>{
+    const f=e.target.files[0]; if(!f) return;
+    const rd=new FileReader();
+    rd.onload=()=>{ $('sample').value=''; ta.value=String(rd.result); ta.scrollTop=0; sel=-1; run(true); };
+    rd.readAsText(f); e.target.value='';
+  });
+  ta.addEventListener('keydown',e=>{
+    if(e.key==='Tab' && !e.shiftKey && !e.altKey && !e.metaKey && !e.ctrlKey && ta.selectionStart===ta.selectionEnd){
+      e.preventDefault(); ta.setRangeText('    ',ta.selectionStart,ta.selectionEnd,'end'); ta.dispatchEvent(new Event('input'));
+    }
+  });
+
+  loadSample('m');
+})();
+</script>
+
+</body>
+</html>
